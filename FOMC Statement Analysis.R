@@ -5,11 +5,19 @@
 ### FOMC Sentiment Analysis & Insights / NLP ##
 ###############################################
 
+library(magrittr)
+
+
+read.table(
+  text = system("openssl ciphers -v", intern=TRUE) %>% 
+    gsub("[[:alpha:]]+=", "", .)
+) %>% 
+  setNames(
+    c("ciphername", "protoccol_version", "key_exchange", "authentication", 
+      "symmetric_encryption_method", "message_authentication_code")
+  )
 
 ##import libraries##
-#install.packages("xlsx", dependencies = TRUE)
-#install.packages("rtools", dependencies = TRUE)
-#library(hms)
 
 library(dplyr)
 library(SentimentAnalysis)
@@ -20,7 +28,9 @@ library(stringr)
 library(rlang)
 library(tidyverse)
 library(tidytext)
-library(xlsx)
+#library(xlsx)
+library(readxl)
+library(openxlsx)
 library(RCurl)
 library(XML)
 library(kableExtra)
@@ -43,27 +53,12 @@ library(nnet)
 library(LiblineaR)
 library(knitr)
 
-##import FOMC statements from 2007 - 2021##
+##import FOMC statements from 2007 - forward##
 
-links<-c("https://www.federalreserve.gov/newsevents/pressreleases/monetary20210127a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200129a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200303a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200315a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200323a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200429a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200610a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200729a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200916a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20201105a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20201216a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190130a.htm",
+
+links<-c("https://www.federalreserve.gov/newsevents/pressreleases/monetary20190130a.htm",
          "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190320a.htm",
          "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190501a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190619a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190731a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190918a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20191030a.htm",
-         "https://www.federalreserve.gov/newsevents/pressreleases/monetary20191211a.htm",
          "https://www.federalreserve.gov/newsevents/pressreleases/monetary20180131a.htm",
          "https://www.federalreserve.gov/newsevents/pressreleases/monetary20180321a.htm",
          "https://www.federalreserve.gov/newsevents/pressreleases/monetary20180502a.htm",
@@ -164,8 +159,6 @@ links<-c("https://www.federalreserve.gov/newsevents/pressreleases/monetary202101
          "https://www.federalreserve.gov/newsevents/pressreleases/monetary20071031a.htm",
          "https://www.federalreserve.gov/newsevents/pressreleases/monetary20071211a.htm"
 )
-length(links)
-
 
 ##Prepare metadata for extraction and create dataframe##
 ##extract year of publication from statement release date, create data frame w date and URL ##
@@ -178,6 +171,7 @@ for(i in seq(from=1, to=length(links))) {
 }
 reports<-data.frame(year,statement.dates, links)
 
+
 # Convert factors to characters
 reports %<>% mutate_if(is.factor, as.character)%>% arrange(statement.dates)
 
@@ -186,10 +180,14 @@ reports %<>% mutate_if(is.factor, as.character)%>% arrange(statement.dates)
 ## loop through statement links and scrape contents from Fed website ##
 ## Discard fluff from content like prelim paragraphs ##
 
+library(httr)
+httr_config <- config(ssl_cipher_list = "DEFAULT@SECLEVEL=1")
+res <- with_config(config = httr_config, GET(reports$links[2]))
+
 statement.content<-NULL
 statement.length<-NULL
 for(i in seq(from=1, to=length(reports$links))) {
-  stm.url<-getURL(reports$links[i])
+  stm.url<-(reports$links[i])
   stm.tree<-htmlTreeParse(stm.url,useInternal=TRUE )
   stm.tree.parse<-unlist(xpathApply(stm.tree, path="//p", fun=xmlValue))
   n<-(which(!is.na(str_locate(stm.tree.parse, "release")))+1)[1]
@@ -203,6 +201,8 @@ for(i in seq(from=1, to=length(reports$links))) {
   reports$statement.length[i]<-nchar(reports$statement.content[i])
   #reports$statement.length[i]<-wordcount(reports$statement.content[i], sep = " ", count.function = sum)
 }
+
+str(reports)
 
 # Create R data object
 saveRDS(reports, file = "fomc_data.rds")
@@ -221,4 +221,66 @@ cls = read_csv(classificationFile , col_types = cols( Date = col_character() ) )
 cls %>% rename( Economic.Growth = "Economic Growth", Employment.Growth = "Employment Growth", Medium.Term.Rate = "Medium Term Rate", Policy.Rate = "Policy Rate") -> cls
 str(cls)
 
-#write.csv(reports, "Classification_FOMC_Statements.csv", row.names = FALSE)
+#merge the FOMC data and classification data#
+
+d4 %>% inner_join( cls , by = c("statement.dates" = "Date")) %>%
+  mutate( date_mdy = mdy(Date2)) %>%
+  select(Index, 
+         year ,
+         statement.dates, 
+         links, 
+         statement.content, 
+         statement.length ,
+         date_mdy,
+         Economic.Growth,
+         Employment.Growth,
+         Inflation,
+         Medium.Term.Rate,
+         Policy.Rate ) -> mgData
+str(mgData)
+
+mgData %>% select( Index, date_mdy, Economic.Growth, Employment.Growth, Inflation, Medium.Term.Rate, Policy.Rate) %>% kable() %>% kable_styling(bootstrap_options = c("hover", "striped")) %>%
+  scroll_box(width = "90%", height = "300px")
+
+## export the merged data frame! ##
+rds_filename = "fomc_merged_data_v2.rds"
+saveRDS(mgData, file = rds_filename)
+
+
+## EXPLORATORY ANALYSIS ##
+##Analyze FOMC statement word lengths and frequency##
+
+# Compute total statement length per year by aggregating across individual statements
+yearly.length<-reports%>% group_by(year) %>% summarize(words.per.year=sum(statement.length))
+yearly.length
+
+ggplot(yearly.length, aes(x=yearly.length$year,y=yearly.length$words.per.year))+
+  geom_bar(stat="identity",fill="darkblue", colour="black") + 
+  coord_flip()+xlab("Year")+ylab("Statement Length")
+
+sample<-reports%>%filter(reports$statement.dates=="20140319")
+sample[,4]
+str(reports)
+
+str_count(sample, pattern="inflation")
+
+p<-ggplot(reports, aes(x=year,y=statement.length))+
+  geom_point(stat="identity",color=statement.dates)+
+  scale_fill_brewer(palette="Pastel1")+
+  theme(legend.position="right")+xlab("Year") + ylab("Length of Statement")
+
+p
+
+p + ggplot2::annotate("text", x = 4,y = 5000, 
+                      label = "Bernanke", family="serif", fontface="bold", 
+                      colour="blue", size=4)+
+  ggplot2::annotate("text", x=10, y=5500, label="Yellen", family="serif", fontface="bold", 
+                    colour="darkred",size=4)+
+  ggplot2::annotate("text", x=13, y=3600, label="Powell", family="serif", 
+                    fontface="bold", colour="black",size=4)+
+  ggplot2::annotate("segment", x = 0, xend = 8.1, y = 2700, yend = 6500, colour = "blue", 
+                    size=1, arrow=arrow(ends="both"))+
+  ggplot2::annotate("segment", x = 8.1, xend = 12.1, y = 6500, yend = 3200, 
+                    colour = "darkred", size=1, arrow=arrow(ends="both"))+
+  ggplot2::annotate("segment", x = 12.1, xend = 14, y = 3200, yend = 3200,
+                    colour = "black", size=1, arrow=arrow(ends="both"))
