@@ -181,13 +181,13 @@ reports %<>% mutate_if(is.factor, as.character)%>% arrange(statement.dates)
 ## Discard fluff from content like prelim paragraphs ##
 
 library(httr)
-httr_config <- config(ssl_cipher_list = "DEFAULT@SECLEVEL=1")
-res <- with_config(config = httr_config, GET(reports$links[2]))
+#httr_config <- config(ssl_cipher_list = "DEFAULT@SECLEVEL=1")
+#res <- with_config(config = httr_config, GET(reports$links[2]))
 
 statement.content<-NULL
 statement.length<-NULL
 for(i in seq(from=1, to=length(reports$links))) {
-  stm.url<-(reports$links[i])
+  stm.url<-content(GET(reports$links[i]))
   stm.tree<-htmlTreeParse(stm.url,useInternal=TRUE )
   stm.tree.parse<-unlist(xpathApply(stm.tree, path="//p", fun=xmlValue))
   n<-(which(!is.na(str_locate(stm.tree.parse, "release")))+1)[1]
@@ -260,7 +260,7 @@ ggplot(yearly.length, aes(x=yearly.length$year,y=yearly.length$words.per.year))+
 
 sample<-reports%>%filter(reports$statement.dates=="20140319")
 sample[,4]
-str(reports)
+
 
 str_count(sample, pattern="inflation")
 
