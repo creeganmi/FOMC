@@ -284,3 +284,207 @@ p + ggplot2::annotate("text", x = 4,y = 5000,
                     colour = "darkred", size=1, arrow=arrow(ends="both"))+
   ggplot2::annotate("segment", x = 12.1, xend = 14, y = 3200, yend = 3200,
                     colour = "black", size=1, arrow=arrow(ends="both"))
+
+##custom stop words like "committee" that do not provide insight into sentiment##
+
+words<-c("committee", "ben", "geithner", "bernanke", 
+         "timothy", "hoenig", "thomas", "donald", "kevin", "mishkin", 
+         "kroszner", "kohn", "charles", "frederic")
+
+lexicon<-c("Custom")
+my.stop_words<-data.frame(words, lexicon)
+colnames(my.stop_words)<-c("word","lexicon")
+new.stop_words <- rbind(my.stop_words, stop_words)
+new.stop_words$word<-as.character(new.stop_words$word)
+new.stop_words$lexicon<-as.character(new.stop_words$lexicon)
+head(new.stop_words)
+
+##cleanse data## remove punctuaction, white space, stop words, etc...##
+report.words<-reports %>%
+  mutate(date = statement.dates, year = year, text= statement.content) %>%
+  unnest(text) %>% unnest_tokens(word, text) %>%
+  mutate(word = stripWhitespace(gsub("[^A-Za-z ]"," ",word))) %>% 
+  filter(word != "") %>% filter(word != " ") %>%
+  anti_join(new.stop_words)%>% 
+  count(date, year, word, sort = TRUE)%>% 
+  mutate(frequency = n) %>% 
+  select(date, year, word, frequency)
+
+# Verify the count for the word "inflation" during the statements published in 2007 
+report.words%>%filter(year=='2007', word=='inflation')
+
+# Rank most frequent words by year
+f_text<-report.words%>% group_by(year,word) %>% 
+  summarize(total=sum(frequency))%>%
+  arrange(year,desc(total),word)%>% 
+  mutate(rank=row_number())%>%
+  ungroup() %>% 
+  arrange(rank,year)
+
+# Select the top 10 ranked words per year
+topWords <- f_text %>% 
+  filter(rank<11)%>%
+  arrange(year,rank)
+
+print(topWords)
+
+# Graph top 10 most frequent words by year
+gg <- ggplot(head(topWords, 130), aes(y=total,x=reorder(word,rank))) + 
+  geom_col(fill="#27408b") +
+  facet_wrap(~year,scales="free", ncol=3)+ 
+  coord_flip()+theme_ridges(font_size=11) + 
+  labs(x="",y="",title="Most Frequent Words in FOMC Statements grouped by years (2007 - 2019)")
+
+gg
+
+##explore economic attributes##
+mgData<-readRDS(file = "fomc_merged_data_v2.rds")
+
+gEcon <- ggplot(data=mgData, aes(x=Economic.Growth, fill=Economic.Growth)) + 
+  geom_bar() + theme(legend.position = "none")
+
+gEmp  <- ggplot(data=mgData, aes(x=Employment.Growth, fill=Employment.Growth)) + 
+  geom_bar() +  theme(legend.position = "none")
+
+gInf  <- ggplot(data=mgData, aes(x=Inflation, fill=Inflation)) + 
+  geom_bar() + theme(legend.position = "none")
+
+gRate <- ggplot(data=mgData, aes(x=Medium.Term.Rate, fill=Medium.Term.Rate)) + 
+  geom_bar() + theme(legend.position = "none")
+
+gPolicy <- ggplot(data=mgData, aes(x=Policy.Rate, fill=Policy.Rate)) + 
+  geom_bar() + theme(legend.position = "none")
+
+grid.arrange(gEcon, gEmp, gInf, gRate, gPolicy, ncol=3, nrow=2 )
+
+##correlation/covariation of attributes##
+
+mgData %>% select(Economic.Growth:Policy.Rate) -> catData  # categorical data
+cv = matrix(rep(0,25), nrow=5, ncol=5)
+for(idx in 1:5){
+  for(jdx in 1:5){
+    cv[idx,jdx] = cramerV(catData[,idx], catData[,jdx])
+  }
+}
+rownames( cv ) = colnames(catData)
+colnames( cv ) = colnames(catData)
+ggcorrplot(cv, lab=TRUE, ggtheme = ggplot2::theme_classic(), colors=c("violet", "white", "lightgreen")) +
+  ggtitle("CramerV Matrix", subtitle="Classification Attributes Comparison")
+
+##time series##
+
+DGS10<-read.csv("https://raw.githubusercontent.com/DataScienceAR/Cuny-Assignments/master/Data-607/Data-Sets/DGS10.csv",stringsAsFactors = FALSE)
+str(DGS10)
+
+DGS10$DATE<- as_date(DGS10$DATE)
+DGS10$DGS10<-as.numeric(DGS10$DGS10)
+
+# Analysis of 10-Year Treasury Constant Maturity Rate
+
+ggplot(data = DGS10)+
+  aes(x=DATE,y=`DGS10`)+
+  geom_line(size=.98,color="steelblue")+
+  labs(x="Date",y="Percent",title="10 Year Constant Maturity Rate")+
+  theme(panel.background = element_rect(fill = "white"))
+
+
+# Analysis of Russell 3000Â® Total Market Index
+RU3000TR<-read.csv("https://raw.githubusercontent.com/DataScienceAR/Cuny-Assignments/master/Data-607/Data-Sets/RU3000TR.csv",stringsAsFactors = FALSE)
+str(RU3000TR)
+RU3000TR$DATE<- as_date(RU3000TR$DATE)
+RU3000TR$RU3000TR<-as.numeric(RU3000TR$RU3000TR)
+
+ggplot(data = RU3000TR)+
+  aes(x=DATE,y=`RU3000TR`)+
+  geom_line(size=.98,color="steelblue")+
+  labs(x="Date",y="Percent",title="Russell 3000Â® Total Market Index")+
+  theme(panel.background = element_rect(fill = "white"))
+
+# Analysis of Russell 1000Â® Total Market Index
+
+RU1000TR<-read.csv("https://raw.githubusercontent.com/DataScienceAR/Cuny-Assignments/master/Data-607/Data-Sets/RU1000TR.csv",stringsAsFactors = FALSE)
+str(RU1000TR)
+
+RU1000TR$DATE<- as_date(RU1000TR$DATE)
+RU1000TR$RU1000TR<-as.numeric(RU1000TR$RU1000TR)
+
+ggplot(data = RU1000TR)+
+  aes(x=DATE,y=`RU1000TR`)+
+  geom_line(size=.98,color="steelblue")+
+  labs(x="Date",y="Percent",title="Russell 1000Â® Total Market Index")+
+  theme(panel.background = element_rect(fill = "white"))
+
+# Analysis of Federal Funds Target Range
+
+FEDTARGET<-read.csv("https://raw.githubusercontent.com/DataScienceAR/Cuny-Assignments/master/Data-607/Data-Sets/FEDTARGET.csv",stringsAsFactors = FALSE)
+str(FEDTARGET)
+
+FEDTARGET$DATE<- as.Date(strptime(FEDTARGET$DATE,format="%m/%d/%Y"),format="%Y-%m-%d")
+FEDTARGET$Percent<-as.numeric(FEDTARGET$Percent)
+
+ggplot(data = FEDTARGET)+
+  aes(x=DATE,y=`Percent`,color=Type)+
+  geom_line(size=.98)+
+  labs(x="Date",y="Percent",title="Federal Funds Target Range")+
+  theme(panel.background = element_rect(fill = "white"))
+
+
+##Text Classification##
+fomc_data <-readRDS(file = "fomc_merged_data_v2.rds")
+head(select(fomc_data, Index,year,statement.dates,statement.length,date_mdy,
+            Employment.Growth,Economic.Growth,Inflation,Medium.Term.Rate,Policy.Rate))
+
+#ramdomize data#
+
+set.seed(1234567)
+fomc_Rand <- fomc_data[sample(nrow(fomc_data)),]
+customStopWords <- c("the federal open market committee", "committee")
+
+fomc_dataX <- fomc_Rand %>% 
+  mutate(statement.content = tolower(statement.content))%>%
+  mutate(statement.content = str_replace_all(statement.content, customStopWords, ""))
+
+# form a corpus
+corpus <- VCorpus(VectorSource(fomc_dataX$statement.content))
+# Remove Punctuation
+corpus <- tm_map(corpus, content_transformer(removePunctuation))
+# Remove numbers
+corpus <- tm_map(corpus, removeNumbers)
+# Convert to lower case
+corpus <- tm_map(corpus, content_transformer(tolower))
+# Remove stop words
+corpus <- tm_map(corpus, content_transformer(removeWords), stopwords("english"))
+##Stemming
+corpus <- tm_map(corpus, stemDocument)
+# Remove Whitespace
+corpus <- tm_map(corpus, stripWhitespace)
+# Create Document Term Matrix
+dtm <- DocumentTermMatrix(corpus)
+# handle sparsity
+corpusX <- removeSparseTerms(dtm, 0.30)
+# convert to matrix
+data_matrix <- as.matrix(corpusX)
+
+#medium term rate classification#
+
+mRate <- data_matrix
+# attach the 'medium.term.rate' column
+mRate_matrix <- cbind(mRate, fomc_dataX$Medium.Term.Rate)
+# rename it to 'tone'
+colnames(mRate_matrix)[ncol(mRate_matrix)] <- "tone"
+# convert to data frame
+mRateData <- as.data.frame(mRate_matrix)
+# convert 'tone' to lower case and make it a factor column as well
+mRateData$tone <- as.factor(tolower(mRateData$tone))
+
+#partition into test and train data#
+mRate_n <- nrow(mRateData)
+mRateTrainVolume <- round(mRate_n * 0.7)
+set.seed(314)
+mRateTrainIndex <- sample(mRate_n, mRateTrainVolume)
+mRateTrain <- mRateData[mRateTrainIndex,]
+mRateTest <- mRateData[-mRateTrainIndex,]
+
+names(mRateTrain)
+##need to work on this model##
+mRateModel <- train(tone ~., data = mRateTrain, method = 'svmLinear3')
