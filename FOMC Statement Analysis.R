@@ -5,8 +5,11 @@
 ### FOMC Sentiment Analysis & Insights / NLP ##
 ###############################################
 
+
 ##import libraries##
-install.packages("hms")
+install.packages("xlsx", dependencies = TRUE)
+install.packages("rtools", dependencies = TRUE)
+library(hms)
 
 library(dplyr)
 library(SentimentAnalysis)
@@ -218,4 +221,4 @@ cls = read_csv(classificationFile , col_types = cols( Date = col_character() ) )
 cls %>% rename( Economic.Growth = "Economic Growth", Employment.Growth = "Employment Growth", Medium.Term.Rate = "Medium Term Rate", Policy.Rate = "Policy Rate") -> cls
 str(cls)
 
-write.csv(reports, "Classification_FOMC_Statements.csv", row.names = FALSE)
+#write.csv(reports, "Classification_FOMC_Statements.csv", row.names = FALSE)
