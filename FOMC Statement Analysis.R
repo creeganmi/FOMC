@@ -488,3 +488,122 @@ mRateTest <- mRateData[-mRateTrainIndex,]
 names(mRateTrain)
 ##need to work on this model##
 mRateModel <- train(tone ~., data = mRateTrain, method = 'svmLinear3')
+
+
+##Sentiment Analysis##
+
+fomcStatements <-readRDS(file = "fomc_merged_data_v2.rds") %>% 
+  select(statement.dates, statement.content)
+
+fomcX <- fomcStatements %>% 
+  mutate(date = statement.dates, year = as.numeric(str_extract(statement.dates,'\\d{4}')),
+         text= statement.content)%>%   
+  select(date, year, text)
+
+# Sentiment analysis with Loughran-Mcdonald dictionary
+
+sentiment <- analyzeSentiment(fomcX$text, language = "english", aggregate = fomcX$year,
+                              removeStopwords = TRUE, stemming = TRUE,
+                              rules=list("SentimentLM"=list(ruleSentiment,
+                                                            loadDictionaryLM())))
+
+summary(sentiment)
+
+# Table showing breakdown of Sentiments
+
+table(convertToDirection(sentiment$SentimentLM))
+
+# Line plot to visualize the evolution of sentiment scores. 
+
+plotSentiment(sentiment, xlab="Tone")
+
+Sentiment<-data.frame(fomcX$date,fomcX$year,sentiment$SentimentLM,
+                      convertToDirection(sentiment$SentimentLM))
+
+names(Sentiment)<-(c("FOMC_Date","FOMC_Year","Sentiment_Score","Sentiment"))
+str(Sentiment)
+
+# Change the date format to Ymd
+Sentiment$FOMC_Date<- ymd(Sentiment$FOMC_Date)
+Sentiment$FOMC_Year<- as.numeric(Sentiment$FOMC_Year)
+str(Sentiment)
+
+# Distribution of Sentiment Score for period of 2007 to 2019
+
+ggplot(Sentiment,aes(x=Sentiment_Score))+
+  geom_histogram(binwidth =.0125,color="black",fill="lightblue")+
+  labs(x="Setiment Score",y="Frequency",title="Sentiment Score Distribution from 2007 to 2019")+
+  theme(panel.background = element_rect(fill = "white"))
+
+# Sentiment Score Trend
+
+ggplot(data = Sentiment)+
+  aes(x=FOMC_Date,y=Sentiment_Score)+
+  geom_line(size=.98,color="firebrick")+
+  labs(x="FOMC Date",y="Sentiment Score",title="Sentiment Score trend over the period of 2007 to 2019")+
+  theme(panel.background = element_rect(fill = "white"))
+
+# Scatter plot of score vs Date (Grouped)
+
+ggplot(Sentiment,aes(x=FOMC_Date,y=Sentiment_Score,color=Sentiment))+
+  geom_point()+
+  labs(x="FOMC Date",y="Sentiment Score",title="Sentiments spread over the period of 2007 to 2019")+
+  theme(panel.background = element_rect(fill = "white"))
+
+# Exporting data frame to RDS
+## Changing the Date format
+Sentiment$FOMC_Date<-format(Sentiment$FOMC_Date, format = "%Y%m%d")
+## Exporting to .RDS
+saveRDS(Sentiment,"SentimentDF.rds")
+
+##Financial Impact of Sentiment##
+
+#load all data frames
+mgData<-readRDS(file = "fomc_merged_data_v2.rds")
+sData <- readRDS( file = "SentimentDF.rds")
+file_fred_ru1000tr = "https://raw.githubusercontent.com/completegraph/DATA607FINAL/master/DATA/FRED_RU1000TR.csv"
+ru1000tr = read_csv(file_fred_ru1000tr, 
+                    col_types = cols(DATE=col_character(), 
+                                     RU1000TR = col_double() ) )
+
+# Generate a lubridate date column to join with the FOMC data.
+# -----------------------------------------------------------------
+ru1000tr %>% mutate( date_mdy = lubridate::ymd( DATE ) )-> ruData
+#z_ru_daily = (RU1000TR - mean(RU1000TR, na.rm=TRUE))/sd(RU1000TR, na.rm = TRUE )
+#  Second, join the data:
+#  Since this is a 2-way inner join, we start with the FOMC statement data
+#  and join it to the sentiment data by date string (yyyymmdd)
+# -------------------------------------------------------------------------
+mgData %>% inner_join(sData, by = c( "statement.dates" = "FOMC_Date")) -> msData
+#  Join the sentiment-FOMC data to the Russell 1000 Index data from FRED
+#  Make sure to add a Z-score for each of the time series: sentiment and Rusell index values
+#     Save the raw data and normalized data by FOMC data.
+# ----------------------------------------------------------------------------------
+msEQdata = msData %>% left_join(ruData, by = c("date_mdy" = "date_mdy") ) %>% 
+  select( date_mdy, Sentiment_Score, RU1000TR ) %>%
+  mutate( z_ru_fomc = (RU1000TR - mean(RU1000TR, na.rm = TRUE) ) / sd( RU1000TR, na.rm=TRUE ) ,
+          z_sentiment = ( Sentiment_Score - mean( Sentiment_Score, na.rm = TRUE) ) / 
+            sd( Sentiment_Score, na.rm=TRUE) )
+
+msEQdata %>% mutate( logEquity = log(RU1000TR) ) %>%
+  mutate( z_logEquity = ( logEquity - mean(logEquity) )/ sd( logEquity ) ) -> msEQdata
+
+msEQdata %>%  kable() %>% scroll_box(width="100%", height="200px")
+
+#Sentiment vs Russell 1000
+ggplot() + 
+  geom_line(data=msEQdata, aes(x=date_mdy, y=Sentiment_Score) , color = "red" ) +
+  geom_line(data=msEQdata, aes(x=date_mdy, y=RU1000TR), color="green") +
+  ggtitle("Sentiment vs. Russell 1000 Equity Level", subtitle="Not usable without fixes")
+
+ggplot() + 
+  geom_line(data=msEQdata, aes(x=date_mdy, y=z_sentiment) , color = "red" ) +
+  geom_line(data=msEQdata, aes(x=date_mdy, y=z_ru_fomc), color="green") +
+  ggtitle("Scaled Sentiment vs. Scaled Equity Index", subtitle = "Nearly There...")
+
+ggplot() + 
+  geom_line(data=msEQdata, aes(x=date_mdy, y=z_sentiment) , color = "red" ) +
+  geom_line(data=msEQdata, aes(x=date_mdy, y=z_logEquity), color="green") +
+  ggtitle("Scaled-Sentiment vs. Scaled Log Equity Price")
+
+
