@@ -607,3 +607,7 @@ ggplot() +
   ggtitle("Scaled-Sentiment vs. Scaled Log Equity Price")
 
 
+##regression of sentiment##
+
+mod1 = lm( z_logEquity ~ z_sentiment, data=msEQdata[2:102,])
+summary(mod1)
