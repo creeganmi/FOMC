@@ -290,7 +290,7 @@ p + ggplot2::annotate("text", x = 4,y = 5000,
 words<-c("committee", "ben", "geithner", "bernanke", 
          "timothy", "hoenig", "thomas", "donald", "kevin", "mishkin", 
          "kroszner", "kohn", "charles", "frederic")
-
+ 
 lexicon<-c("Custom")
 my.stop_words<-data.frame(words, lexicon)
 colnames(my.stop_words)<-c("word","lexicon")
@@ -611,3 +611,38 @@ ggplot() +
 
 mod1 = lm( z_logEquity ~ z_sentiment, data=msEQdata[2:102,])
 summary(mod1)
+
+#scatterplot of regressed values with regression line to study the model fit##
+ggplot(data=msEQdata[2:102,], aes(x=z_sentiment, y=z_logEquity) ) + 
+  geom_point() + 
+  geom_smooth(method=lm) +
+  ggtitle("ScatterPlot of Fitted Regression Model", subtitle="X=Z-Sentiment, Y=Z-LogRussell 1000 (2007-2019)")
+
+
+###oil analysis##
+setwd('C:/Users/creeg/Downloads')
+wti <- read.csv("wtid.csv", header = TRUE)
+
+head(ru1000tr)
+head(wti)
+
+str(wti)
+str(ru1000tr)
+wti$Date <- ymd(wti$Date)
+
+wti %>% mutate( date_mdy = lubridate::ymd( Date ) )-> wtiData
+
+head(msEQdata)
+dim(msEQdata)
+names(msData)
+names(wtiData)
+names(ruData)
+names(msEQdata)
+
+##oil prices, equity prices, sentiment score (all standardized to z-score) in one table##
+msEQWTIdata <- msEQdata %>% inner_join(wtiData, by = ("date_mdy" = "date_mdy")) %>%
+  select( date_mdy, Sentiment_Score, z_ru_fomc, z_sentiment, logEquity, z_logEquity
+          ,Price) %>%
+  mutate(z_wti_price = (Price - mean(Price, na.rm = TRUE) ) / sd( Price, na.rm = TRUE))
+
+head(msEQWTIdata)
