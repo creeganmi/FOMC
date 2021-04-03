@@ -623,21 +623,9 @@ ggplot(data=msEQdata[2:102,], aes(x=z_sentiment, y=z_logEquity) ) +
 setwd('C:/Users/creeg/Downloads')
 wti <- read.csv("wtid.csv", header = TRUE)
 
-head(ru1000tr)
-head(wti)
-
-str(wti)
-str(ru1000tr)
 wti$Date <- ymd(wti$Date)
 
 wti %>% mutate( date_mdy = lubridate::ymd( Date ) )-> wtiData
-
-head(msEQdata)
-dim(msEQdata)
-names(msData)
-names(wtiData)
-names(ruData)
-names(msEQdata)
 
 ##oil prices, equity prices, sentiment score (all standardized to z-score) in one table##
 msEQWTIdata <- msEQdata %>% inner_join(wtiData, by = ("date_mdy" = "date_mdy")) %>%
@@ -645,4 +633,55 @@ msEQWTIdata <- msEQdata %>% inner_join(wtiData, by = ("date_mdy" = "date_mdy")) 
           ,Price) %>%
   mutate(z_wti_price = (Price - mean(Price, na.rm = TRUE) ) / sd( Price, na.rm = TRUE))
 
-head(msEQWTIdata)
+msEQWTIdata %>% mutate( logWTI = log(Price) ) %>%
+  mutate( z_log_wti_price = ( logWTI - mean(logWTI) )/ sd( logWTI ) ) -> msEQWTIdata
+
+##add 10 year treasury rates##
+TSY10 <- DGS10
+
+TSY10$DATE <- ymd(TSY10$DATE)
+TSY10$DATE <- format(TSY10$DATE, format = "%Y%m%d")
+TSY10 %>% mutate( date_mdy = lubridate::ymd( DATE ) )-> TSY10data
+
+names(msEQWTIdata)
+names(TSY10data)
+
+msTSYdata <- msEQWTIdata %>% inner_join(TSY10data, by = ("date_mdy" = "date_mdy")) %>%
+  select( date_mdy, Sentiment_Score, z_ru_fomc, z_sentiment, logEquity, z_logEquity
+          ,z_wti_price, logWTI, z_log_wti_price, DGS10) %>%
+  mutate(z_tsy10 = (DGS10 - mean(DGS10, na.rm = TRUE) ) / sd( DGS10, na.rm = TRUE))
+
+msTSYdata %>% mutate( logTSY10 = log(DGS10) ) %>%
+  mutate( z_log_TSY10 = ( logTSY10 - mean(logTSY10) )/ sd( logTSY10 ) ) -> msTSYdata
+
+mean(TSY10$DGS10)
+sd(TSY10$DGS10)
+mean(wti$Price)
+sd(wti$Price)
+
+##add 3M LIBOR rates USD##
+libor <- read.csv("3MLIBOR.csv", header = TRUE)
+head(libor)
+
+libor
+libor$USD3MTD156N <- as.numeric(libor$USD3MTD156N)
+
+libor$DATE <- ymd(libor$DATE)
+libor %>% mutate( date_mdy = lubridate::ymd( DATE ) )-> libordata
+
+names(msTSYdata)
+names(liborData)
+
+
+msfinaldata <- msTSYdata %>% inner_join(libordata, by = ("date_mdy" = "date_mdy")) %>%
+  select( date_mdy, Sentiment_Score, z_ru_fomc, z_sentiment, logEquity, z_logEquity
+          ,z_wti_price, logWTI, z_log_wti_price, z_tsy10, logTSY10, z_log_TSY10, USD3MTD156N) %>%
+  mutate(z_libor = (USD3MTD156N - mean(USD3MTD156N, na.rm = TRUE) ) / sd( USD3MTD156N, na.rm = TRUE))
+
+msfinaldata %>% mutate( log3mLibor = log(USD3MTD156N) ) %>%
+  mutate( z_log_3M_Libor = ( log3mLibor - mean(log3mLibor) )/ sd( log3mLibor ) ) -> msfinaldata
+
+
+head(msfinaldata)
+#library(writexl)
+write_xlsx(msfinaldata, "msfinal.xlsx")
