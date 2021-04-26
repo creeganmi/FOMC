@@ -261,7 +261,6 @@ ggplot(yearly.length, aes(x=yearly.length$year,y=yearly.length$words.per.year))+
 sample<-reports%>%filter(reports$statement.dates=="20140319")
 sample[,4]
 
-
 str_count(sample, pattern="inflation")
 
 p<-ggplot(reports, aes(x=year,y=statement.length))+
@@ -286,7 +285,6 @@ p + ggplot2::annotate("text", x = 4,y = 5000,
                     colour = "black", size=1, arrow=arrow(ends="both"))
 
 ##custom stop words like "committee" that do not provide insight into sentiment##
-
 words<-c("committee", "ben", "geithner", "bernanke", 
          "timothy", "hoenig", "thomas", "donald", "kevin", "mishkin", 
          "kroszner", "kohn", "charles", "frederic")
@@ -681,7 +679,29 @@ msfinaldata <- msTSYdata %>% inner_join(libordata, by = ("date_mdy" = "date_mdy"
 msfinaldata %>% mutate( log3mLibor = log(USD3MTD156N) ) %>%
   mutate( z_log_3M_Libor = ( log3mLibor - mean(log3mLibor) )/ sd( log3mLibor ) ) -> msfinaldata
 
+##brent oil test##
+brent <- read.csv("brent.csv", header = TRUE)
+names(brent)
 
-head(msfinaldata)
+class(brent$Price)
+brent$brent <- brent$Price
+class(brent$brent)
+
+brent$Date <- ymd(brent$Date)
+brent %>% mutate( date_mdy = lubridate::ymd( Date ) )-> brentdata
+names(msfinaldata)
+
+msfinaldata1 <- msfinaldata %>% inner_join(brentdata, by = ("date_mdy" = "date_mdy")) %>%
+  select( date_mdy, Sentiment_Score, z_ru_fomc, z_sentiment, logEquity, z_logEquity
+          ,z_wti_price, logWTI, z_log_wti_price, z_tsy10, logTSY10, z_log_TSY10
+          ,z_libor, log3mLibor, z_log_3M_Libor, brent) %>%
+  mutate(z_brent = (brent - mean(brent, na.rm = TRUE) ) / sd( brent, na.rm = TRUE))
+
+msfinaldata1 %>% mutate( logbrent = log(Price) ) %>%
+  mutate( z_log_brent = ( logbrent - mean(logbrent) )/ sd( logbrent ) ) -> msfinaldata
+
+msfinaldata1$z_log_brent
+
+head(msfinaldata1)
 #library(writexl)
-write_xlsx(msfinaldata, "msfinal.xlsx")
+write_xlsx(msfinaldata1, "msfinal1.xlsx")
